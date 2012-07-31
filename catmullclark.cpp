@@ -120,17 +120,21 @@ public:
 };
 point operator*(double m, const point &p){return point(p.x*m,p.y*m,p.z*m);}
 
-void ProjectPoints(vector<EigenDat> &es, point *Cp, const point *C, int N)
+void ProjectPoints(vector<EigenDat> &es, vector<point> &Cp,
+		const vector<point> &C, int N)
 {
 	const int K = 2*N+8;
 	const int ni = N-3;
+	const EigenDat &e = es[ni];
+	Cp.resize(K);
 	for(int i=0;i<K;++i)
 	{
-		Cp[i] = point(0,0,0);
+		point p(0,0,0);
 		for(int j=0;j<K;++j)
 		{
-			Cp[i] += es[ni].vecI[IX(i,j,K)] * C[j];
+			p += e.vecI[IX(i,j,K)] * C[j];
 		}
+		Cp[i] = p;
 	}
 }
 
@@ -148,6 +152,15 @@ double NFunc(int i, double t)
 	else return (t*t*t)/6.0;
 }
 
+vd EvalNs(double t)
+{
+	vd res(4);
+	for(int i=0;i<4;++i)
+		res[i] = NFunc(i, t);
+	return res;
+}
+
+/*
 double EvalSpline(const int K, const double *coef, double u, double v)
 {
 	double r=0;
@@ -157,13 +170,25 @@ double EvalSpline(const int K, const double *coef, double u, double v)
 	}
 	return r;
 }
+*/
 
-point EvalSurf (vector<EigenDat> &es, double u, double v, const point *Cp, int N)
+double EvalSpl(const int K, const double *coef, const vd &us, const vd &vs)
+{
+	double r=0;
+	for(int i=0;i<16;++i)
+	{
+		r += coef[K*i] * us[i%4] * vs[i/4];
+	}
+	return r;
+}
+
+point EvalSurf (const vector<EigenDat> &es, double u, double v,
+		const vector<point> Cp, const int N)
 {
 	const double n = floor(min(-log2(u), -log2(v)));
 	const double p2 = pow(2, n);
 
-	const double orgu = u,orgv = v;
+	const double orgu = u, orgv = v;
 
 	u *= p2;
 	v *= p2;
@@ -190,9 +215,13 @@ point EvalSurf (vector<EigenDat> &es, double u, double v, const point *Cp, int N
 
 	const int K = 2*N+8;
 	const int ni = N-3;
+	const EigenDat &e = es[ni];
+	const vd us = EvalNs(u);
+	const vd vs = EvalNs(v);
 	for(int i=0;i<K;++i)
 	{
-		P += pow(es[ni].val[i],n) * EvalSpline(K,&es[ni].Phi[k][0]+i,u,v) * Cp[i];
+		P += pow(e.val[i], n) *
+			EvalSpl(K, &e.Phi[k][0]+i, us, vs) * Cp[i];
 	}
 	return P;
 }
@@ -200,14 +229,13 @@ point EvalSurf (vector<EigenDat> &es, double u, double v, const point *Cp, int N
 main ( int argc, char ** argv )
 {
 	vector<EigenDat> ev;
-	int Nmax;
 
 	if(!read_eval ( ev ))
 		exit ( 1 );
 
 	//print_eval ( ev, Nmax );
-	int N=3;
-	int K=14;
+	const int N=3;
+	const int K=14;
 	vector<point> pts(K);
 	pts[0]=point(.6,.6,.6);
 	pts[1]=point(.7,0,.7);
@@ -225,7 +253,7 @@ main ( int argc, char ** argv )
 	pts[13]=point(-.7,0,.7);
 
 	vector<point> cp(K);
-	ProjectPoints(ev, &cp[0], &pts[0], N);
+	ProjectPoints(ev, cp, pts, N);
 
 	int div=10;
 	for(int i=0;i<=div;++i)
@@ -234,7 +262,7 @@ main ( int argc, char ** argv )
 		{
 			double u=i/(double)div;
 			double v=j/(double)div;
-			point p=EvalSurf(ev, u, v, &cp[0], N);
+			point p=EvalSurf(ev, u, v, cp, N);
 			printf("%f %f %f\n", p.x,p.y,p.z);
 		}
 		printf("\n");
